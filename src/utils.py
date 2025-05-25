@@ -41,8 +41,10 @@ def save_image(image, path):
     path : str
         Path to save the image
     """
-    # Create directory if it doesn't exist
-    os.makedirs(os.path.dirname(path), exist_ok=True)
+    # Create directory if it doesn't exist and path has a directory component
+    dir_path = os.path.dirname(path)
+    if dir_path:  # Only create directory if there is one
+        os.makedirs(dir_path, exist_ok=True)
     
     # Convert from RGB to BGR (OpenCV format)
     image_bgr = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)

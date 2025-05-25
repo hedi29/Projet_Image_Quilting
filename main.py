@@ -1,65 +1,69 @@
 """
-Main entry point for the Image Quilting project.
-
-This script provides a command-line interface to run texture synthesis
-and texture transfer using the Image Quilting algorithm.
+Simple main script for Image Quilting texture synthesis.
+Usage: python main_simple.py --input texture.jpg --output result.png
 """
 
-import os
 import argparse
 import time
+import os
 import numpy as np
-import cv2
-from src.quilting import synthesize_texture
-from src.transfer import texture_transfer
-from src.evaluation import evaluate_synthesis_quality
-from src.utils import load_texture, save_image, visualize_results, visualize_transfer_results
+from src import ImageQuilting, load_texture, save_image, visualize_results, evaluate_texture_quality
 
 
-def parse_arguments():
-    """Parse command-line arguments."""
-    parser = argparse.ArgumentParser(description='Image Quilting for Texture Synthesis and Transfer')
+def create_test_texture():
+    """Create a test texture with clear structure for testing."""
+    size = 64
+    texture = np.zeros((size, size, 3), dtype=np.uint8)
     
-    # Common parameters
-    parser.add_argument('--input', type=str, required=True,
-                        help='Path to input texture image')
-    parser.add_argument('--output', type=str, required=True,
-                        help='Path to save output image')
-    parser.add_argument('--mode', type=str, choices=['synthesis', 'transfer'], default='synthesis',
-                        help='Mode: texture synthesis or texture transfer')
-    parser.add_argument('--block-size', type=int, default=32,
-                        help='Size of quilting blocks (default: 32)')
-    parser.add_argument('--overlap', type=int, default=6,
-                        help='Size of overlap between blocks (default: 6)')
-    parser.add_argument('--tolerance', type=float, default=0.1,
-                        help='Error tolerance for block selection (default: 0.1)')
-    parser.add_argument('--output-width', type=int, default=None,
-                        help='Width of output image (default: 2x input width)')
-    parser.add_argument('--output-height', type=int, default=None,
-                        help='Height of output image (default: 2x input height)')
-    parser.add_argument('--visualize', action='store_true',
-                        help='Save visualization of original and result')
-    parser.add_argument('--evaluate', action='store_true',
-                        help='Evaluate synthesis quality using metrics')
+    # Create a wood-like grain pattern
+    for i in range(size):
+        for j in range(size):
+            # Base wood color
+            base_color = [139, 90, 43]  # Brown
+            
+            # Add vertical grain lines
+            grain = np.sin(j * 0.3) * 20
+            noise = np.random.randint(-10, 10)
+            
+            # Apply variations
+            for c in range(3):
+                val = base_color[c] + grain + noise
+                texture[i, j, c] = np.clip(val, 0, 255)
     
-    # Texture transfer specific parameters
-    parser.add_argument('--target', type=str, default=None,
-                        help='Path to target image for texture transfer')
-    parser.add_argument('--alpha', type=float, default=0.8,
-                        help='Weight between texture and correspondence (default: 0.8)')
-    parser.add_argument('--iterations', type=int, default=3,
-                        help='Number of refinement iterations for transfer (default: 3)')
-    
-    return parser.parse_args()
+    return texture
 
 
 def main():
-    """Main function to run the Image Quilting algorithm."""
-    args = parse_arguments()
+    parser = argparse.ArgumentParser(description='Image Quilting Texture Synthesis')
+    parser.add_argument('--input', type=str, help='Input texture image path')
+    parser.add_argument('--output', type=str, default='output.png', help='Output image path')
+    parser.add_argument('--block-size', type=int, default=32, help='Block size (default: 32)')
+    parser.add_argument('--overlap-ratio', type=float, default=1/6, help='Overlap ratio (default: 1/6)')
+    parser.add_argument('--tolerance', type=float, default=0.1, help='Error tolerance (default: 0.1)')
+    parser.add_argument('--output-width', type=int, default=None, help='Output width')
+    parser.add_argument('--output-height', type=int, default=None, help='Output height')
+    parser.add_argument('--evaluate', action='store_true', help='Evaluate synthesis quality')
+    parser.add_argument('--test', action='store_true', help='Use test texture instead of input file')
     
-    # Load input texture
-    input_texture = load_texture(args.input)
-    print(f"Loaded input texture: {args.input}, shape: {input_texture.shape}")
+    args = parser.parse_args()
+    
+    # Load or create texture
+    if args.test or args.input is None:
+        print("Using test texture...")
+        input_texture = create_test_texture()
+        if args.input is None:
+            args.input = "test_texture"
+    else:
+        print(f"Loading texture from: {args.input}")
+        try:
+            input_texture = load_texture(args.input)
+        except Exception as e:
+            print(f"Error loading texture: {e}")
+            print("Using test texture instead...")
+            input_texture = create_test_texture()
+            args.input = "test_texture"
+    
+    print(f"Input texture shape: {input_texture.shape}")
     
     # Determine output size
     if args.output_width is None:
@@ -72,105 +76,130 @@ def main():
     else:
         output_height = args.output_height
     
-    print(f"Output dimensions: {output_width}x{output_height}")
+    output_size = (output_height, output_width)
+    print(f"Output size: {output_size}")
     
-    # Run algorithm based on mode
+    # Initialize quilting algorithm
+    quilter = ImageQuilting(
+        block_size=args.block_size,
+        overlap_ratio=args.overlap_ratio,
+        tolerance=args.tolerance
+    )
+    
+    print(f"Algorithm parameters:")
+    print(f"  Block size: {quilter.block_size}")
+    print(f"  Overlap: {quilter.overlap}")
+    print(f"  Tolerance: {quilter.tolerance}")
+    
+    # Synthesize texture
+    print("\nStarting texture synthesis...")
     start_time = time.time()
     
-    if args.mode == 'synthesis':
-        print(f"Running texture synthesis with block size: {args.block_size}, overlap: {args.overlap}")
+    try:
+        result = quilter.synthesize_texture(input_texture, output_size)
         
-        result = synthesize_texture(
-            input_texture,
-            output_height,
-            output_width,
-            args.block_size,
-            args.overlap,
-            args.tolerance
-        )
+        synthesis_time = time.time() - start_time
+        print(f"Synthesis completed in {synthesis_time:.2f} seconds")
         
         # Save result
+        os.makedirs(os.path.dirname(args.output) if os.path.dirname(args.output) else '.', exist_ok=True)
         save_image(result, args.output)
-        print(f"Saved synthesized texture to: {args.output}")
+        print(f"Saved result to: {args.output}")
         
-        # Generate visualization if requested
-        if args.visualize:
-            vis_path = os.path.splitext(args.output)[0] + '_visualization.png'
-            vis_image = visualize_results(
-                input_texture, result,
-                title=f"Texture Synthesis (Block: {args.block_size}, Overlap: {args.overlap})",
-                save_path=vis_path
-            )
-            print(f"Saved visualization to: {vis_path}")
+        # Evaluate quality if requested
+        if args.evaluate:
+            print("\nEvaluating synthesis quality...")
+            metrics = evaluate_texture_quality(input_texture, result)
+            
+            # Save metrics
+            metrics_path = os.path.splitext(args.output)[0] + '_metrics.txt'
+            with open(metrics_path, 'w') as f:
+                f.write(f"Input: {args.input}\n")
+                f.write(f"Output: {args.output}\n")
+                f.write(f"Block size: {args.block_size}\n")
+                f.write(f"Overlap ratio: {args.overlap_ratio}\n")
+                f.write(f"Tolerance: {args.tolerance}\n")
+                f.write(f"Synthesis time: {synthesis_time:.2f}s\n")
+                f.write("\nQuality Metrics:\n")
+                for key, value in metrics.items():
+                    f.write(f"{key}: {value:.6f}\n")
+            
+            print(f"Saved evaluation metrics to: {metrics_path}")
         
-    elif args.mode == 'transfer':
-        if args.target is None:
-            raise ValueError("Target image must be specified for texture transfer mode")
-        
-        # Load target image
-        target_image = load_texture(args.target)
-        print(f"Loaded target image: {args.target}, shape: {target_image.shape}")
-        
-        print(f"Running texture transfer with alpha: {args.alpha}, iterations: {args.iterations}")
-        
-        result = texture_transfer(
-            input_texture,
-            target_image,
-            output_size=(output_height, output_width),
-            block_size=args.block_size,
-            overlap_size=args.overlap,
-            alpha=args.alpha,
-            iterations=args.iterations,
-            tolerance=args.tolerance
-        )
-        
-        # Save result
-        save_image(result, args.output)
-        print(f"Saved transferred texture to: {args.output}")
-        
-        # Generate visualization if requested
-        if args.visualize:
-            vis_path = os.path.splitext(args.output)[0] + '_visualization.png'
-            vis_image = visualize_transfer_results(
-                input_texture, target_image, result,
-                title=f"Texture Transfer (Block: {args.block_size}, Alpha: {args.alpha})",
-                save_path=vis_path
-            )
-            print(f"Saved visualization to: {vis_path}")
+        # Visualize results
+        try:
+            visualize_results(input_texture, result, 
+                            f"Image Quilting Results\nBlock: {args.block_size}, Overlap: {quilter.overlap}")
+        except Exception as e:
+            print(f"Visualization error: {e}")
+            print("Results saved successfully despite visualization error.")
     
-    elapsed_time = time.time() - start_time
-    print(f"Processing completed in {elapsed_time:.2f} seconds")
+    except Exception as e:
+        print(f"Error during synthesis: {e}")
+        return 1
     
-    # Evaluate synthesis quality if requested
-    if args.evaluate:
-        print("Evaluating synthesis quality...")
-        metrics = evaluate_synthesis_quality(input_texture, result)
+    return 0
+
+
+def run_parameter_study():
+    """Run a parameter study to find optimal settings."""
+    print("Running parameter study...")
+    
+    # Create test texture
+    test_texture = create_test_texture()
+    
+    # Parameter combinations to test
+    parameter_sets = [
+        {'block_size': 16, 'overlap_ratio': 1/6, 'tolerance': 0.1},
+        {'block_size': 24, 'overlap_ratio': 1/6, 'tolerance': 0.1},
+        {'block_size': 32, 'overlap_ratio': 1/6, 'tolerance': 0.1},
+        {'block_size': 24, 'overlap_ratio': 1/4, 'tolerance': 0.1},
+        {'block_size': 32, 'overlap_ratio': 1/4, 'tolerance': 0.1},
+        {'block_size': 32, 'overlap_ratio': 1/6, 'tolerance': 0.15},
+    ]
+    
+    results = []
+    
+    for i, params in enumerate(parameter_sets):
+        print(f"\nTesting parameter set {i+1}: {params}")
         
-        print("\nQuality Metrics:")
-        print(f"SSIM: {metrics['ssim']:.4f} (higher is better)")
-        print(f"MSE: {metrics['mse']:.4f} (lower is better)")
-        print(f"Histogram Distance: {metrics['histogram_distance']:.4f} (lower is better)")
+        quilter = ImageQuilting(**params)
         
-        # Save metrics to file
-        metrics_path = os.path.splitext(args.output)[0] + '_metrics.txt'
-        with open(metrics_path, 'w') as f:
-            f.write(f"Input: {args.input}\n")
-            f.write(f"Output: {args.output}\n")
-            f.write(f"Mode: {args.mode}\n")
-            f.write(f"Block Size: {args.block_size}\n")
-            f.write(f"Overlap: {args.overlap}\n")
-            f.write(f"Tolerance: {args.tolerance}\n")
-            if args.mode == 'transfer':
-                f.write(f"Target: {args.target}\n")
-                f.write(f"Alpha: {args.alpha}\n")
-                f.write(f"Iterations: {args.iterations}\n")
-            f.write("\nQuality Metrics:\n")
-            f.write(f"SSIM: {metrics['ssim']:.6f}\n")
-            f.write(f"MSE: {metrics['mse']:.6f}\n")
-            f.write(f"Histogram Distance: {metrics['histogram_distance']:.6f}\n")
+        start_time = time.time()
+        synthesized = quilter.synthesize_texture(test_texture, (128, 128))
+        synthesis_time = time.time() - start_time
         
-        print(f"Saved metrics to: {metrics_path}")
+        quality = evaluate_texture_quality(test_texture, synthesized, verbose=False)
+        
+        results.append({
+            'params': params,
+            'quality': quality,
+            'time': synthesis_time,
+            'synthesized': synthesized
+        })
+        
+        print(f"Score: {quality['overall_score']:.4f}, Time: {synthesis_time:.2f}s")
+    
+    # Find best result
+    best_result = max(results, key=lambda x: x['quality']['overall_score'])
+    
+    print(f"\nBest parameters: {best_result['params']}")
+    print(f"Best score: {best_result['quality']['overall_score']:.4f}")
+    print(f"Time: {best_result['time']:.2f}s")
+    
+    # Save best result
+    save_image(best_result['synthesized'], 'best_result.png')
+    print("Saved best result to: best_result.png")
+    
+    return results
 
 
 if __name__ == "__main__":
-    main()
+    import sys
+    
+    # Check if user wants to run parameter study
+    if len(sys.argv) > 1 and sys.argv[1] == '--parameter-study':
+        run_parameter_study()
+    else:
+        exit_code = main()
+        sys.exit(exit_code)

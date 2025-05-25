@@ -14,20 +14,11 @@ __version__ = '0.1.0'
 __author__ = 'Your Name'
 
 # Import core functionality
-from .quilting import (
-    synthesize_texture,
-    random_patch,
-    minimum_error_boundary_cut
-)
-
-from .transfer import (
-    texture_transfer,
-    find_best_block_for_transfer
-)
+from .quilting import ImageQuilting
 
 from .evaluation import (
-    evaluate_synthesis_quality,
-    compute_ssim
+    evaluate_texture_quality,
+    compute_ssim_patches
 )
 
 from .utils import (
@@ -38,13 +29,10 @@ from .utils import (
 
 # Define public API
 __all__ = [
-    'synthesize_texture',
-    'texture_transfer',
-    'evaluate_synthesis_quality',
+    'ImageQuilting',
+    'evaluate_texture_quality',
     'load_texture',
     'save_image',
     'visualize_results',
-    'random_patch',
-    'minimum_error_boundary_cut',
-    'compute_ssim'
+    'compute_ssim_patches'
 ]

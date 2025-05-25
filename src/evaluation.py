@@ -1,25 +1,22 @@
 """
-Evaluation metrics for texture synthesis quality assessment.
-
-This module provides functions to evaluate the quality of synthesized textures
-using various metrics such as SSIM, MSE, and patch-based comparison.
+Simplified evaluation module for Image Quilting results.
 """
 
 import numpy as np
 import cv2
 from skimage.metrics import structural_similarity as ssim
-import matplotlib.pyplot as plt
 
 
-def compute_ssim(original_texture, synthesized_texture, patch_size=64, num_patches=20):
-    """Compute SSIM between patches of original and synthesized textures.
+def compute_ssim_patches(original, synthesized, patch_size=64, num_patches=20):
+    """
+    Compute SSIM between random patches from original and synthesized textures.
     
     Parameters:
     -----------
-    original_texture : ndarray
-        Original input texture
-    synthesized_texture : ndarray
-        Synthesized output texture
+    original : ndarray
+        Original texture
+    synthesized : ndarray
+        Synthesized texture
     patch_size : int
         Size of patches to compare
     num_patches : int
@@ -28,229 +25,238 @@ def compute_ssim(original_texture, synthesized_texture, patch_size=64, num_patch
     Returns:
     --------
     float
-        Average SSIM value across all patches and color channels
+        Average SSIM value
     """
-    h_orig, w_orig = original_texture.shape[:2]
-    h_synth, w_synth = synthesized_texture.shape[:2]
+    h_orig, w_orig = original.shape[:2]
+    h_synth, w_synth = synthesized.shape[:2]
     
-    # Ensure patch size is not larger than the textures
+    # Ensure patch size is valid
     patch_size = min(patch_size, h_orig, w_orig, h_synth, w_synth)
+    
+    if patch_size < 8:  # Minimum reasonable patch size
+        return 0.0
     
     ssim_values = []
     
     for _ in range(num_patches):
-        # Extract random patch from original texture
-        i_orig = np.random.randint(0, h_orig - patch_size)
-        j_orig = np.random.randint(0, w_orig - patch_size)
-        patch_orig = original_texture[i_orig:i_orig+patch_size, j_orig:j_orig+patch_size]
+        # Random patch from original
+        i_orig = np.random.randint(0, h_orig - patch_size + 1)
+        j_orig = np.random.randint(0, w_orig - patch_size + 1)
+        patch_orig = original[i_orig:i_orig+patch_size, j_orig:j_orig+patch_size]
         
-        # Extract random patch from synthesized texture
-        i_synth = np.random.randint(0, h_synth - patch_size)
-        j_synth = np.random.randint(0, w_synth - patch_size)
-        patch_synth = synthesized_texture[i_synth:i_synth+patch_size, j_synth:j_synth+patch_size]
+        # Random patch from synthesized
+        i_synth = np.random.randint(0, h_synth - patch_size + 1)
+        j_synth = np.random.randint(0, w_synth - patch_size + 1)
+        patch_synth = synthesized[i_synth:i_synth+patch_size, j_synth:j_synth+patch_size]
         
-        # Compute SSIM for each channel
-        ssim_rgb = []
+        # Compute SSIM for each channel and average
+        channel_ssims = []
         for c in range(3):
-            ssim_value = ssim(patch_orig[:,:,c], patch_synth[:,:,c], data_range=255)
-            ssim_rgb.append(ssim_value)
+            try:
+                ssim_val = ssim(patch_orig[:,:,c], patch_synth[:,:,c], 
+                               data_range=255, win_size=min(7, patch_size//2*2-1))
+                channel_ssims.append(ssim_val)
+            except:
+                channel_ssims.append(0.0)
         
-        # Average SSIM across channels
-        ssim_values.append(np.mean(ssim_rgb))
+        ssim_values.append(np.mean(channel_ssims))
     
     return np.mean(ssim_values)
 
 
-def compute_mse(original_texture, synthesized_texture, patch_size=64, num_patches=20):
-    """Compute Mean Squared Error between patches of original and synthesized textures.
+def compute_histogram_distance(original, synthesized):
+    """
+    Compute histogram distance between textures.
     
     Parameters:
     -----------
-    original_texture : ndarray
-        Original input texture
-    synthesized_texture : ndarray
-        Synthesized output texture
-    patch_size : int
-        Size of patches to compare
-    num_patches : int
-        Number of random patches to sample
+    original : ndarray
+        Original texture
+    synthesized : ndarray
+        Synthesized texture
         
     Returns:
     --------
     float
-        Average MSE value across all patches
+        Average histogram distance across channels
     """
-    h_orig, w_orig = original_texture.shape[:2]
-    h_synth, w_synth = synthesized_texture.shape[:2]
+    distances = []
     
-    # Ensure patch size is not larger than the textures
-    patch_size = min(patch_size, h_orig, w_orig, h_synth, w_synth)
-    
-    mse_values = []
-    
-    for _ in range(num_patches):
-        # Extract random patch from original texture
-        i_orig = np.random.randint(0, h_orig - patch_size)
-        j_orig = np.random.randint(0, w_orig - patch_size)
-        patch_orig = original_texture[i_orig:i_orig+patch_size, j_orig:j_orig+patch_size].astype(float)
-        
-        # Find best matching patch in synthesized texture
-        best_mse = float('inf')
-        
-        # Sample random locations in synthesized texture
-        for _ in range(10):
-            i_synth = np.random.randint(0, h_synth - patch_size)
-            j_synth = np.random.randint(0, w_synth - patch_size)
-            patch_synth = synthesized_texture[i_synth:i_synth+patch_size, j_synth:j_synth+patch_size].astype(float)
-            
-            # Compute MSE
-            mse = np.mean((patch_orig - patch_synth)**2)
-            best_mse = min(best_mse, mse)
-        
-        mse_values.append(best_mse)
-    
-    return np.mean(mse_values)
-
-
-def compute_histogram_distance(original_texture, synthesized_texture, num_bins=50):
-    """Compute color histogram distance between original and synthesized textures.
-    
-    Parameters:
-    -----------
-    original_texture : ndarray
-        Original input texture
-    synthesized_texture : ndarray
-        Synthesized output texture
-    num_bins : int
-        Number of bins for histogram computation
-        
-    Returns:
-    --------
-    float
-        Histogram distance (chi-square distance)
-    """
-    distance = 0
-    
-    # Compute histogram for each channel
     for c in range(3):
-        hist_orig = cv2.calcHist([original_texture], [c], None, [num_bins], [0, 256])
-        hist_synth = cv2.calcHist([synthesized_texture], [c], None, [num_bins], [0, 256])
+        hist_orig = cv2.calcHist([original], [c], None, [64], [0, 256])
+        hist_synth = cv2.calcHist([synthesized], [c], None, [64], [0, 256])
         
-        # Normalize histograms
-        hist_orig = cv2.normalize(hist_orig, hist_orig).flatten()
-        hist_synth = cv2.normalize(hist_synth, hist_synth).flatten()
+        # Normalize
+        hist_orig = hist_orig.flatten() / hist_orig.sum()
+        hist_synth = hist_synth.flatten() / hist_synth.sum()
         
-        # Compute chi-square distance
-        chi_square = 0.5 * np.sum(((hist_orig - hist_synth)**2) / (hist_orig + hist_synth + 1e-10))
-        distance += chi_square
+        # Chi-square distance
+        distance = 0.5 * np.sum((hist_orig - hist_synth)**2 / (hist_orig + hist_synth + 1e-10))
+        distances.append(distance)
     
-    return distance / 3.0  # Average across channels
+    return np.mean(distances)
 
 
-def visualize_patch_comparison(original_texture, synthesized_texture, patch_size=64, num_patches=5):
-    """Visualize random patches from original and synthesized textures for visual comparison.
-    
-    Parameters:
-    -----------
-    original_texture : ndarray
-        Original input texture
-    synthesized_texture : ndarray
-        Synthesized output texture
-    patch_size : int
-        Size of patches to compare
-    num_patches : int
-        Number of random patches to visualize
-        
-    Returns:
-    --------
-    ndarray
-        Visualization image showing patch comparisons
+def evaluate_texture_quality(original, synthesized, verbose=True):
     """
-    h_orig, w_orig = original_texture.shape[:2]
-    h_synth, w_synth = synthesized_texture.shape[:2]
-    
-    # Ensure patch size is not larger than the textures
-    patch_size = min(patch_size, h_orig, w_orig, h_synth, w_synth)
-    
-    # Create figure
-    fig, axes = plt.subplots(num_patches, 2, figsize=(10, num_patches*5))
-    
-    for i in range(num_patches):
-        # Extract random patch from original texture
-        i_orig = np.random.randint(0, h_orig - patch_size)
-        j_orig = np.random.randint(0, w_orig - patch_size)
-        patch_orig = original_texture[i_orig:i_orig+patch_size, j_orig:j_orig+patch_size]
-        
-        # Extract random patch from synthesized texture
-        i_synth = np.random.randint(0, h_synth - patch_size)
-        j_synth = np.random.randint(0, w_synth - patch_size)
-        patch_synth = synthesized_texture[i_synth:i_synth+patch_size, j_synth:j_synth+patch_size]
-        
-        # Display patches
-        axes[i, 0].imshow(cv2.cvtColor(patch_orig, cv2.COLOR_BGR2RGB))
-        axes[i, 0].set_title(f'Original Patch {i+1}')
-        axes[i, 0].axis('off')
-        
-        axes[i, 1].imshow(cv2.cvtColor(patch_synth, cv2.COLOR_BGR2RGB))
-        axes[i, 1].set_title(f'Synthesized Patch {i+1}')
-        axes[i, 1].axis('off')
-    
-    plt.tight_layout()
-    
-    # Convert figure to image
-    fig.canvas.draw()
-    comparison_img = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
-    comparison_img = comparison_img.reshape(fig.canvas.get_width_height()[::-1] + (3,))
-    
-    plt.close(fig)
-    
-    return comparison_img
-
-
-def evaluate_synthesis_quality(original_texture, synthesized_texture, patch_size=64, 
-                               num_patches=20, visualize=False):
-    """Evaluate the quality of texture synthesis using multiple metrics.
+    Evaluate synthesized texture quality.
     
     Parameters:
     -----------
-    original_texture : ndarray
-        Original input texture
-    synthesized_texture : ndarray
-        Synthesized output texture
-    patch_size : int
-        Size of patches to compare
-    num_patches : int
-        Number of random patches to sample
-    visualize : bool
-        Whether to generate visualization of patch comparisons
+    original : ndarray
+        Original texture
+    synthesized : ndarray
+        Synthesized texture
+    verbose : bool
+        Whether to print results
         
     Returns:
     --------
     dict
         Dictionary of evaluation metrics
     """
-    # Compute SSIM
-    ssim_value = compute_ssim(original_texture, synthesized_texture, 
-                              patch_size, num_patches)
+    # Compute metrics
+    ssim_score = compute_ssim_patches(original, synthesized)
+    hist_distance = compute_histogram_distance(original, synthesized)
     
-    # Compute MSE
-    mse_value = compute_mse(original_texture, synthesized_texture, 
-                           patch_size, num_patches)
+    # Simple visual consistency check (edge preservation)
+    orig_edges = cv2.Canny(cv2.cvtColor(original, cv2.COLOR_RGB2GRAY), 50, 150)
+    synth_edges = cv2.Canny(cv2.cvtColor(synthesized, cv2.COLOR_RGB2GRAY), 50, 150)
     
-    # Compute histogram distance
-    hist_distance = compute_histogram_distance(original_texture, synthesized_texture)
+    orig_edge_density = np.sum(orig_edges > 0) / orig_edges.size
+    synth_edge_density = np.sum(synth_edges > 0) / synth_edges.size
+    edge_consistency = 1.0 - abs(orig_edge_density - synth_edge_density)
     
-    # Prepare results
     results = {
-        'ssim': ssim_value,
-        'mse': mse_value,
-        'histogram_distance': hist_distance
+        'ssim': ssim_score,
+        'histogram_distance': hist_distance,
+        'edge_consistency': edge_consistency,
+        'overall_score': (ssim_score + edge_consistency) / 2 - hist_distance / 10
     }
     
-    # Generate visualization if requested
-    if visualize:
-        comparison_img = visualize_patch_comparison(original_texture, synthesized_texture,
-                                                   patch_size, min(5, num_patches))
-        results['visualization'] = comparison_img
+    if verbose:
+        print("\n" + "="*50)
+        print("TEXTURE QUALITY EVALUATION")
+        print("="*50)
+        print(f"SSIM Score:           {ssim_score:.4f} (higher is better)")
+        print(f"Histogram Distance:   {hist_distance:.4f} (lower is better)")
+        print(f"Edge Consistency:     {edge_consistency:.4f} (higher is better)")
+        print(f"Overall Score:        {results['overall_score']:.4f}")
+        print("="*50)
     
     return results
+
+
+def compare_parameters(input_texture, parameter_sets, output_size=(200, 200)):
+    """
+    Compare different parameter combinations.
+    
+    Parameters:
+    -----------
+    input_texture : ndarray
+        Input texture
+    parameter_sets : list
+        List of dictionaries with parameters to test
+    output_size : tuple
+        Output size for synthesis
+        
+    Returns:
+    --------
+    dict
+        Results for each parameter set
+    """
+    from .quilting import ImageQuilting
+    
+    results = {}
+    
+    print("Comparing parameter sets...")
+    for i, params in enumerate(parameter_sets):
+        print(f"\nTesting parameter set {i+1}: {params}")
+        
+        # Create quilter with these parameters
+        quilter = ImageQuilting(**params)
+        
+        # Synthesize texture
+        synthesized = quilter.synthesize_texture(input_texture, output_size)
+        
+        # Evaluate quality
+        quality = evaluate_texture_quality(input_texture, synthesized, verbose=False)
+        
+        results[f"params_{i+1}"] = {
+            'parameters': params,
+            'synthesized': synthesized,
+            'quality': quality
+        }
+        
+        print(f"Overall Score: {quality['overall_score']:.4f}")
+    
+    # Find best parameters
+    best_key = max(results.keys(), key=lambda k: results[k]['quality']['overall_score'])
+    best_params = results[best_key]['parameters']
+    best_score = results[best_key]['quality']['overall_score']
+    
+    print(f"\nBest parameters: {best_params}")
+    print(f"Best score: {best_score:.4f}")
+    
+    return results
+
+
+# Example parameter comparison
+if __name__ == "__main__":
+    # Example usage with test texture
+    print("Creating test texture for parameter comparison...")
+    
+    # Create a more structured test texture
+    test_texture = np.zeros((80, 80, 3), dtype=np.uint8)
+    
+    # Create a brick-like pattern
+    for i in range(80):
+        for j in range(80):
+            # Brick pattern
+            brick_h = 10
+            brick_w = 20
+            
+            row = i // brick_h
+            col = j // brick_w
+            
+            # Offset every other row
+            if row % 2 == 1:
+                col = (j + brick_w//2) // brick_w
+            
+            # Brick color variation
+            if (row + col) % 2 == 0:
+                test_texture[i, j] = [180, 120, 80]  # Brown brick
+            else:
+                test_texture[i, j] = [160, 100, 60]  # Darker brown
+            
+            # Mortar lines
+            if i % brick_h == 0 or j % brick_w == 0:
+                test_texture[i, j] = [200, 200, 200]  # Light gray mortar
+    
+    # Test different parameter combinations
+    parameter_sets = [
+        {'block_size': 20, 'overlap_ratio': 1/6, 'tolerance': 0.1},
+        {'block_size': 30, 'overlap_ratio': 1/6, 'tolerance': 0.1},
+        {'block_size': 20, 'overlap_ratio': 1/4, 'tolerance': 0.1},
+        {'block_size': 30, 'overlap_ratio': 1/4, 'tolerance': 0.15},
+    ]
+    
+    results = compare_parameters(test_texture, parameter_sets)
+    
+    # Visualize best result
+    best_result = max(results.values(), key=lambda x: x['quality']['overall_score'])
+    
+    import matplotlib.pyplot as plt
+    
+    fig, axes = plt.subplots(1, 2, figsize=(12, 6))
+    
+    axes[0].imshow(test_texture)
+    axes[0].set_title('Original Test Texture')
+    axes[0].axis('off')
+    
+    axes[1].imshow(best_result['synthesized'])
+    axes[1].set_title(f"Best Result\nScore: {best_result['quality']['overall_score']:.3f}")
+    axes[1].axis('off')
+    
+    plt.tight_layout()
+    plt.show()

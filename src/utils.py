@@ -1,54 +1,64 @@
 """
 Utility functions for the Image Quilting project.
 
-This module contains helper functions for loading/saving images,
-visualizing results, and other utility functions.
+This module provides helper functions for loading, saving, and visualizing
+textures and synthesis results.
 """
 
 import os
 import numpy as np
-import cv2
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
+from PIL import Image
 
 
 def load_texture(path):
-    """Load an input texture image.
+    """Load a texture image from file.
     
     Parameters:
     -----------
     path : str
-        Path to the image file
+        Path to the texture image file
         
     Returns:
     --------
     ndarray
-        RGB image as a numpy array
+        Texture image as numpy array with shape (height, width, channels)
     """
-    img = cv2.imread(path)
-    if img is None:
-        raise ValueError(f"Could not load image: {path}")
-    return cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    try:
+        image = Image.open(path)
+        # Convert to RGB if necessary
+        if image.mode != 'RGB':
+            image = image.convert('RGB')
+        return np.array(image)
+    except Exception as e:
+        raise ValueError(f"Could not load texture from {path}: {e}")
 
 
 def save_image(image, path):
-    """Save an image to disk.
+    """Save an image array to file.
     
     Parameters:
     -----------
     image : ndarray
-        RGB image as a numpy array
+        Image array with shape (height, width, channels)
     path : str
-        Path to save the image
+        Output file path
     """
-    # Create directory if it doesn't exist and path has a directory component
-    dir_path = os.path.dirname(path)
-    if dir_path:  # Only create directory if there is one
-        os.makedirs(dir_path, exist_ok=True)
-    
-    # Convert from RGB to BGR (OpenCV format)
-    image_bgr = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
-    cv2.imwrite(path, image_bgr)
+    try:
+        # Ensure the image is in the correct format
+        if image.dtype != np.uint8:
+            image = np.clip(image, 0, 255).astype(np.uint8)
+        
+        # Create directory if it doesn't exist and path has a directory component
+        dir_path = os.path.dirname(path)
+        if dir_path:  # Only create directory if there is one
+            os.makedirs(dir_path, exist_ok=True)
+        
+        # Save image
+        Image.fromarray(image).save(path)
+    except Exception as e:
+        raise ValueError(f"Could not save image to {path}: {e}")
 
 
 def visualize_results(original_texture, synthesized_texture, title=None, save_path=None):
@@ -57,9 +67,9 @@ def visualize_results(original_texture, synthesized_texture, title=None, save_pa
     Parameters:
     -----------
     original_texture : ndarray
-        Original input texture
+        Original texture image
     synthesized_texture : ndarray
-        Synthesized output texture
+        Synthesized texture image
     title : str, optional
         Title for the visualization
     save_path : str, optional
@@ -83,80 +93,6 @@ def visualize_results(original_texture, synthesized_texture, title=None, save_pa
     plt.subplot(1, 2, 2)
     plt.imshow(synthesized_texture)
     plt.title('Synthesized Texture')
-    plt.axis('off')
-    
-    # Set main title
-    if title:
-        plt.suptitle(title, fontsize=16)
-    
-    plt.tight_layout()
-    
-    # Save figure if path is provided
-    if save_path:
-        os.makedirs(os.path.dirname(save_path), exist_ok=True)
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
-    
-    # Convert figure to image - update to use tostring_argb instead of tostring_rgb
-    fig = plt.gcf()
-    fig.canvas.draw()
-    # Fix for FigureCanvasMac 
-    try:
-        img = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
-    except AttributeError:
-        # Use tostring_argb and then rearrange the colors
-        buf = fig.canvas.tostring_argb()
-        img = np.frombuffer(buf, dtype=np.uint8)
-        img = img.reshape(fig.canvas.get_width_height()[::-1] + (4,))
-        # Convert ARGB to RGB
-        img = img[:, :, 1:] 
-    else:
-        img = img.reshape(fig.canvas.get_width_height()[::-1] + (3,))
-    
-    plt.close()
-    
-    return img
-
-
-def visualize_transfer_results(source_texture, target_image, transferred_image, title=None, save_path=None):
-    """Visualize texture transfer results.
-    
-    Parameters:
-    -----------
-    source_texture : ndarray
-        Source texture image
-    target_image : ndarray
-        Target image that guided the transfer
-    transferred_image : ndarray
-        Result of texture transfer
-    title : str, optional
-        Title for the visualization
-    save_path : str, optional
-        Path to save the visualization image
-        
-    Returns:
-    --------
-    ndarray
-        Visualization image
-    """
-    # Create figure
-    plt.figure(figsize=(15, 5))
-    
-    # Display source texture
-    plt.subplot(1, 3, 1)
-    plt.imshow(source_texture)
-    plt.title('Source Texture')
-    plt.axis('off')
-    
-    # Display target image
-    plt.subplot(1, 3, 2)
-    plt.imshow(target_image)
-    plt.title('Target Image')
-    plt.axis('off')
-    
-    # Display transferred result
-    plt.subplot(1, 3, 3)
-    plt.imshow(transferred_image)
-    plt.title('Texture Transfer Result')
     plt.axis('off')
     
     # Set main title
@@ -260,131 +196,6 @@ def visualize_min_cut(block1, block2, overlap, mask, direction='vertical'):
     ax4.axis('off')
     
     plt.tight_layout()
-    
-    # Convert figure to image - update to use tostring_argb instead of tostring_rgb
-    fig.canvas.draw()
-    # Fix for FigureCanvasMac 
-    try:
-        img = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
-    except AttributeError:
-        # Use tostring_argb and then rearrange the colors
-        buf = fig.canvas.tostring_argb()
-        img = np.frombuffer(buf, dtype=np.uint8)
-        img = img.reshape(fig.canvas.get_width_height()[::-1] + (4,))
-        # Convert ARGB to RGB
-        img = img[:, :, 1:] 
-    else:
-        img = img.reshape(fig.canvas.get_width_height()[::-1] + (3,))
-    
-    plt.close(fig)
-    
-    return img
-
-
-def parameter_study(input_texture, block_sizes, overlap_ratios, output_size=(200, 200)):
-    """Perform a parameter study to analyze the effect of block size and overlap.
-    
-    Parameters:
-    -----------
-    input_texture : ndarray
-        Input texture image
-    block_sizes : list
-        List of block sizes to test
-    overlap_ratios : list
-        List of overlap ratios to test (as a fraction of block size)
-    output_size : tuple
-        Size of the output texture for each test
-        
-    Returns:
-    --------
-    dict
-        Dictionary containing results of the parameter study
-    """
-    from .quilting import synthesize_texture
-    from .evaluation import evaluate_synthesis_quality
-    
-    results = {}
-    
-    for block_size in block_sizes:
-        block_results = {}
-        for overlap_ratio in overlap_ratios:
-            overlap_size = max(1, int(block_size * overlap_ratio))
-            
-            # Synthesize texture with current parameters
-            synthesized = synthesize_texture(
-                input_texture, output_size[0], output_size[1], 
-                block_size, overlap_size
-            )
-            
-            # Evaluate quality
-            quality = evaluate_synthesis_quality(input_texture, synthesized)
-            
-            # Record results
-            block_results[overlap_ratio] = {
-                'synthesized': synthesized,
-                'metrics': quality,
-                'parameters': {
-                    'block_size': block_size,
-                    'overlap_size': overlap_size,
-                    'overlap_ratio': overlap_ratio
-                }
-            }
-        
-        results[block_size] = block_results
-    
-    return results
-
-
-def visualize_parameter_study(study_results, save_path=None):
-    """Visualize the results of a parameter study.
-    
-    Parameters:
-    -----------
-    study_results : dict
-        Dictionary containing results of the parameter study
-    save_path : str, optional
-        Path to save the visualization image
-        
-    Returns:
-    --------
-    ndarray
-        Visualization image
-    """
-    block_sizes = list(study_results.keys())
-    overlap_ratios = list(study_results[block_sizes[0]].keys())
-    
-    # Create figure
-    n_rows = len(block_sizes)
-    n_cols = len(overlap_ratios)
-    
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(n_cols*3, n_rows*3))
-    
-    # Plot results
-    for i, block_size in enumerate(block_sizes):
-        for j, overlap_ratio in enumerate(overlap_ratios):
-            result = study_results[block_size][overlap_ratio]
-            synthesized = result['synthesized']
-            ssim = result['metrics']['ssim']
-            
-            if n_rows == 1 and n_cols == 1:
-                ax = axes
-            elif n_rows == 1:
-                ax = axes[j]
-            elif n_cols == 1:
-                ax = axes[i]
-            else:
-                ax = axes[i, j]
-            
-            ax.imshow(synthesized)
-            ax.set_title(f'Block: {block_size}, Ratio: {overlap_ratio:.2f}\nSSIM: {ssim:.3f}')
-            ax.axis('off')
-    
-    plt.tight_layout()
-    
-    # Save figure if path is provided
-    if save_path:
-        os.makedirs(os.path.dirname(save_path), exist_ok=True)
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
     
     # Convert figure to image - update to use tostring_argb instead of tostring_rgb
     fig.canvas.draw()

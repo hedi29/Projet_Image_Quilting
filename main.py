@@ -7,7 +7,7 @@ import argparse
 import time
 import os
 import numpy as np
-from src import ImageQuilting, load_texture, save_image, visualize_results, evaluate_texture_quality
+from src import ImageQuilting, load_texture, save_image, visualize_results
 
 
 def create_test_texture():
@@ -42,7 +42,6 @@ def main():
     parser.add_argument('--tolerance', type=float, default=0.1, help='Error tolerance (default: 0.1)')
     parser.add_argument('--output-width', type=int, default=None, help='Output width')
     parser.add_argument('--output-height', type=int, default=None, help='Output height')
-    parser.add_argument('--evaluate', action='store_true', help='Evaluate synthesis quality')
     parser.add_argument('--test', action='store_true', help='Use test texture instead of input file')
     
     args = parser.parse_args()
@@ -106,26 +105,6 @@ def main():
         save_image(result, args.output)
         print(f"Saved result to: {args.output}")
         
-        # Evaluate quality if requested
-        if args.evaluate:
-            print("\nEvaluating synthesis quality...")
-            metrics = evaluate_texture_quality(input_texture, result)
-            
-            # Save metrics
-            metrics_path = os.path.splitext(args.output)[0] + '_metrics.txt'
-            with open(metrics_path, 'w') as f:
-                f.write(f"Input: {args.input}\n")
-                f.write(f"Output: {args.output}\n")
-                f.write(f"Block size: {args.block_size}\n")
-                f.write(f"Overlap ratio: {args.overlap_ratio}\n")
-                f.write(f"Tolerance: {args.tolerance}\n")
-                f.write(f"Synthesis time: {synthesis_time:.2f}s\n")
-                f.write("\nQuality Metrics:\n")
-                for key, value in metrics.items():
-                    f.write(f"{key}: {value:.6f}\n")
-            
-            print(f"Saved evaluation metrics to: {metrics_path}")
-        
         # Visualize results
         try:
             visualize_results(input_texture, result, 
@@ -169,22 +148,18 @@ def run_parameter_study():
         synthesized = quilter.synthesize_texture(test_texture, (128, 128))
         synthesis_time = time.time() - start_time
         
-        quality = evaluate_texture_quality(test_texture, synthesized, verbose=False)
-        
         results.append({
             'params': params,
-            'quality': quality,
             'time': synthesis_time,
             'synthesized': synthesized
         })
         
-        print(f"Score: {quality['overall_score']:.4f}, Time: {synthesis_time:.2f}s")
+        print(f"Time: {synthesis_time:.2f}s")
     
-    # Find best result
-    best_result = max(results, key=lambda x: x['quality']['overall_score'])
+    # Find best result based on synthesis time (since we can't evaluate quality)
+    best_result = min(results, key=lambda x: x['time'])
     
-    print(f"\nBest parameters: {best_result['params']}")
-    print(f"Best score: {best_result['quality']['overall_score']:.4f}")
+    print(f"\nFastest parameters: {best_result['params']}")
     print(f"Time: {best_result['time']:.2f}s")
     
     # Save best result

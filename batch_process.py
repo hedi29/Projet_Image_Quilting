@@ -1,7 +1,7 @@
 import argparse
 import os
 import time
-from src import ImageQuilting, load_texture, save_image # Assuming src is in PYTHONPATH or script is run from root
+from src import ImageQuilting, load_texture, save_image
 
 def main():
     parser = argparse.ArgumentParser(description='Batch process images for texture synthesis.')
@@ -89,9 +89,10 @@ def main():
             traceback.print_exc() # For more detailed error during development
 
     total_end_time = time.time()
-    print(f"\nBatch processing completed in {(total_end_time - total_start_time):.2f} seconds.")
+    total_time = total_end_time - total_start_time
+    print(f"\nBatch processing completed in {total_time:.2f} seconds.")
 
 if __name__ == '__main__':
     # This ensures that the multiprocessing code (if any part of your imported src uses it)
     # behaves correctly when the script is run directly.
-    main() 
+    main()

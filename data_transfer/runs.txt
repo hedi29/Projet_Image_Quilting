@@ -1,0 +1,7 @@
+python transfer.py --texture photo_article/yogurt.jpeg --target data_transfer/bill-big.jpg --output result.png --block_size 20 --overlap_rate 0.15 --alpha 0.1
+
+python transfer.py --texture photo_article/9.jpeg --target data_transfer/bouga_2.png --output result_bouga_1.png --block_size 30 --overlap_rate 0.15 --alpha 0.1
+
+python transfer.py --texture photo_article/yogurt.jpeg --target data_transfer/bouga.png --output result_bouga.png --block_size 20 --overlap_rate 0.15 --alpha 0.1
+
+python transfer.py --texture photo_article/olives.jpeg --target data_transfer/bouga_2.png --output result_bouga_2.png --block_size 20 --overlap_rate 0.15 --alpha 0.1

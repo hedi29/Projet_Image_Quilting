@@ -1,0 +1,2 @@
+python batch_process.py --data_dir photo_article/ --results_dir resultat_article/ --output_width 640 --output_height 640 --block_size 64 --overlap_ratio 0.2 --tolerance 0.1
+

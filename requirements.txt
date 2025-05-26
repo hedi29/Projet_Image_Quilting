@@ -4,3 +4,5 @@ scikit-image
 matplotlib
 numpy
 tqdm
+torch
+lpips

@@ -1,0 +1,1 @@
+python batch_process.py --data_dir data_texture_geometrique/ --results_dir resultat_texture_geometrique/ --output_width 1024 --output_height 1024 --block_size 128 --overlap_ratio 0.2 --tolerance 0.2

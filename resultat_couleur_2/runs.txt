@@ -1,0 +1,1 @@
+python batch_process.py --data_dir data_couleur_2/ --results_dir resultat_couleur_2/ --output_width 1024 --output_height 1024 --block_size 256 --overlap_ratio 0.2 --tolerance 0.1

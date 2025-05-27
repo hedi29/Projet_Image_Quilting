@@ -27,7 +27,7 @@ Projet_Image/
 │   ├── quilting.py               # Core Image Quilting algorithm
 │   └── utils.py                  # Utility functions for loading, saving, visualizing
 ├── batch_process.py                # Script for batch processing images
-├── evaluation.py                   # Script for evaluating texture quality
+├── evaluation_chi2_LBP.py                   # Script for evaluating texture quality
 ├── main.py                         # Main script for single image texture synthesis
 ├── transfer.py                     # Main script for texture transfer
 ├── requirements.txt                # Python dependencies
@@ -184,14 +184,15 @@ python batch_process.py --data_dir <input_directory_with_textures> --results_dir
     python batch_process.py --data_dir data_texture_geometrique/ --results_dir resultat_texture_geometrique/ --output_width 1024 --output_height 1024 --block_size 128 --overlap_ratio 0.2 --tolerance 0.2
     ```
 
-### 4. Evaluation (`evaluation.py`)
+### 4. Evaluation (`evaluation_chi2_LBP.py`)
 
-The `evaluation.py` script provides a lightweight method to compare a synthesized texture against its original exemplar. It samples random, non-overlapping patches from both images and reports Structural Similarity Index (SSIM) statistics and mean-squared error (MSE).
+combine la distance de Chi² sur histogrammes BGR 3D
+et la distance L2 entre histogrammes LBP.
 
-**How to use `evaluation.py`:**
+**How to use `evaluation_chi2_LBP.py`:**
 
 ```bash
-python evaluation.py --ref <path_to_reference_exemplar> --synth <path_to_synthesized_image> [options]
+python evaluation_chi2.py --ref data_texture_geometrique/D8.jpeg --synth resultat_texture_geometrique/D8_quilted_w1024_h1024_b128.jpeg --bins 8 8 8 --P 8 --R 1.0 --lbp_bins 24
 ```
 
 **Common Options:**

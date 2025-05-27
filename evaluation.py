@@ -1,30 +1,14 @@
 #!/usr/bin/env python3
-"""texture_quality_eval.py – **lightweight** comparison for texture quilting
+"""Lightweight comparison for texture quilting.
 
-Compares a synthesized quilt against its exemplar without downloading heavy
-CNN weights.  It samples *K* random, non‑overlapping patches from both
-images (after optional tiling / resizing) and reports Structural Similarity
-Index (SSIM) statistics plus mean‑squared error (MSE).
+Compares a synthesized quilt against its exemplar using SSIM and MSE
+on random patches, avoiding heavy CNN downloads.
 
-Usage
------
-```bash
-python texture_quality_eval.py \
-        --ref   texture.jpg \
-        --synth big_quilt.png \
-        --patch 40         # patch size (KxK)
-        --num   250        # how many patches to sample
-        --mode  tile       # alignment: tile | resize | crop
-```
-SSIM relies only on OpenCV (or scikit‑image fallback) – **no VGG download**.
+Usage:
+  python texture_quality_eval.py --ref texture.jpg --synth big_quilt.png \
+                                 --patch 40 --num 250 --mode tile
 
-Why no LPIPS / VGG download?
----------------------------
-LPIPS extracts VGG‑16 features; first use triggers a ~519 MB weight download.
-If your machine lacks internet or you just want quick feedback, SSIM gives a
-reasonable correlate of perceptual quality at a fraction of the cost.
-
-Feel free to extend the `metrics` list if you later reinstall lpips.
+SSIM uses OpenCV or scikit-image as a fallback.
 """
 from __future__ import annotations
 import argparse
@@ -35,21 +19,22 @@ from typing import Tuple
 import cv2
 import numpy as np
 
-# ----------------------- SSIM impl -----------------------------------------
+# --- SSIM implementation ---
 try:
-    # OpenCV contrib (fast C++): quality module present?
-    _ = cv2.quality.QualitySSIM_compute
+    # Prefer OpenCV contrib's fast C++ QualitySSIM
+    _ = cv2.quality.QualitySSIM_compute # Check if available
     def _ssim(a: np.ndarray, b: np.ndarray) -> float:  # type: ignore
         return float(cv2.quality.QualitySSIM_compute(a, b)[0])
 except (AttributeError, cv2.error):
-    # Fallback to skimage (pure python, slower but ubiquitous)
+    # Fallback to scikit-image (slower, pure Python)
     from skimage.metrics import structural_similarity as _sk_ssim  # type: ignore
     def _ssim(a: np.ndarray, b: np.ndarray) -> float:
         return float(_sk_ssim(a, b, channel_axis=2))
 
-# ---------------------- Alignment helpers ----------------------------------
+# --- Alignment helpers ---
 
 def _tile_to(shape: Tuple[int, int], img: np.ndarray) -> np.ndarray:
+    "Tiles `img` to match `shape`."
     h, w = shape
     th, tw, _ = img.shape
     rep_y = h // th + 1
@@ -58,6 +43,7 @@ def _tile_to(shape: Tuple[int, int], img: np.ndarray) -> np.ndarray:
     return tiled[:h, :w]
 
 def _align(ref: np.ndarray, synth: np.ndarray, mode: str) -> Tuple[np.ndarray, np.ndarray]:
+    "Aligns `ref` and `synth` images based on `mode`."
     if mode == "tile":
         ref_aligned = _tile_to(synth.shape[:2], ref)
         return ref_aligned, synth
@@ -68,14 +54,15 @@ def _align(ref: np.ndarray, synth: np.ndarray, mode: str) -> Tuple[np.ndarray, n
         h = min(ref.shape[0], synth.shape[0])
         w = min(ref.shape[1], synth.shape[1])
         return ref[:h, :w], synth[:h, :w]
-    raise ValueError(f"Unknown mode {mode}")
+    raise ValueError(f"Unknown alignment mode: {mode}")
 
-# ----------------------- Main routine --------------------------------------
+# --- Main routine ---
 
 def sample_patches(ref: np.ndarray, synth: np.ndarray, k: int, n: int, rng: random.Random):
+    "Samples `n` random `k`x`k` patches from aligned `ref` and `synth` images."
     h, w = ref.shape[:2]
     if h < k or w < k:
-        raise ValueError("Patch size larger than aligned image")
+        raise ValueError("Patch size larger than aligned image.")
     scores = []
     mses   = []
     for _ in range(n):
@@ -87,26 +74,25 @@ def sample_patches(ref: np.ndarray, synth: np.ndarray, k: int, n: int, rng: rand
         mses.append(float(np.mean((r_patch.astype(np.float32) - s_patch.astype(np.float32)) ** 2)))
     return np.array(scores), np.array(mses)
 
-
 def main():
-    p = argparse.ArgumentParser(description="Random‑patch SSIM evaluation for texture quilting.")
-    p.add_argument("--ref",   type=Path, required=True, help="Exemplar texture image")
-    p.add_argument("--synth", type=Path, required=True, help="Synthesized/quilted image")
-    p.add_argument("--patch", type=int, default=40, help="Patch (block) size")
-    p.add_argument("--num",   type=int, default=250, help="Number of random patches")
-    p.add_argument("--mode",  choices=["tile", "resize", "crop"], default="tile", help="How to align differently‑sized inputs")
-    p.add_argument("--seed",  type=int, default=0, help="RNG seed for reproducibility")
+    p = argparse.ArgumentParser(description="Random-patch SSIM/MSE evaluation for texture quilting.")
+    p.add_argument("--ref",   type=Path, required=True, help="Reference exemplar texture image.")
+    p.add_argument("--synth", type=Path, required=True, help="Synthesized (quilted) image.")
+    p.add_argument("--patch", type=int, default=40, help="Patch size (KxK pixels) for comparison.")
+    p.add_argument("--num",   type=int, default=250, help="Number of random patches to sample.")
+    p.add_argument("--mode",  choices=["tile", "resize", "crop"], default="tile", help="Alignment mode for images of different sizes.")
+    p.add_argument("--seed",  type=int, default=0, help="RNG seed for reproducible patch sampling.")
     args = p.parse_args()
 
-    ref   = cv2.imread(str(args.ref), cv2.IMREAD_COLOR)
-    synth = cv2.imread(str(args.synth), cv2.IMREAD_COLOR)
-    if ref is None or synth is None:
-        raise SystemExit("Error: could not load one of the images.")
+    ref_img = cv2.imread(str(args.ref), cv2.IMREAD_COLOR)
+    synth_img = cv2.imread(str(args.synth), cv2.IMREAD_COLOR)
+    if ref_img is None or synth_img is None:
+        raise SystemExit("Error: Could not load one or both images.")
 
-    ref, synth = _align(ref, synth, args.mode)
+    aligned_ref, aligned_synth = _align(ref_img, synth_img, args.mode)
 
     rng = random.Random(args.seed)
-    ssim_scores, mses = sample_patches(ref, synth, args.patch, args.num, rng)
+    ssim_scores, mses = sample_patches(aligned_ref, aligned_synth, args.patch, args.num, rng)
 
     def _stats(arr: np.ndarray):
         return {
@@ -114,15 +100,14 @@ def main():
             "median": np.median(arr),
             "min":    arr.min(),
             "max":    arr.max(),
-            "std":    arr.std(ddof=1),
+            "std":    arr.std(ddof=1), # Sample standard deviation
         }
 
-    print("\n=== Patchwise statistics (N =", args.num, ") ===")
-    s = _stats(ssim_scores)
-    print("SSIM : mean {mean:.3f}, median {median:.3f}, min {min:.3f}, max {max:.3f}, std {std:.3f}".format(**s))
-    s = _stats(mses)
-    print("MSE  : mean {mean:.1f}, median {median:.1f}, min {min:.1f}, max {max:.1f}, std {std:.1f}".format(**s))
-
+    print(f"\n=== Patchwise statistics (N = {args.num}) ===")
+    s_ssim = _stats(ssim_scores)
+    print(f"SSIM : mean {s_ssim['mean']:.3f}, median {s_ssim['median']:.3f}, min {s_ssim['min']:.3f}, max {s_ssim['max']:.3f}, std {s_ssim['std']:.3f}")
+    s_mse = _stats(mses)
+    print(f"MSE  : mean {s_mse['mean']:.1f}, median {s_mse['median']:.1f}, min {s_mse['min']:.1f}, max {s_mse['max']:.1f}, std {s_mse['std']:.1f}")
 
 if __name__ == "__main__":
     main()

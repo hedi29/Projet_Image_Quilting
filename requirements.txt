@@ -1,8 +1,6 @@
-opencv-python
-scikit-learn
-scikit-image
-matplotlib
 numpy
+opencv-python
 tqdm
-torch
-lpips
+matplotlib
+Pillow
+scikit-image

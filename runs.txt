@@ -1,6 +1,0 @@
-python evaluation.py --ref data_texture_geometrique/D1.jpeg --synth resultat_texture_geometrique/D1_quilted_w1024_h1024_b128.png --patch 1000 --mode resize --num 20
-
---mode  tile \        # tile | resize | crop
-        --patch 40  \         # patch size in pixels
-        --num   200 \         # number of random patches
-        --seed  42            # (optional) for reproducibility

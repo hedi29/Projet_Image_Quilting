@@ -1,113 +1,68 @@
 #!/usr/bin/env python3
-"""Lightweight comparison for texture quilting.
-
-Compares a synthesized quilt against its exemplar using SSIM and MSE
-on random patches, avoiding heavy CNN downloads.
-
-Usage:
-  python texture_quality_eval.py --ref texture.jpg --synth big_quilt.png \
-                                 --patch 40 --num 250 --mode tile
-
-SSIM uses OpenCV or scikit-image as a fallback.
-"""
-from __future__ import annotations
-import argparse
-import random
-from pathlib import Path
-from typing import Tuple
-
 import cv2
 import numpy as np
+import argparse
+from skimage.feature import local_binary_pattern
 
-# --- SSIM implementation ---
-try:
-    # Prefer OpenCV contrib's fast C++ QualitySSIM
-    _ = cv2.quality.QualitySSIM_compute # Check if available
-    def _ssim(a: np.ndarray, b: np.ndarray) -> float:  # type: ignore
-        return float(cv2.quality.QualitySSIM_compute(a, b)[0])
-except (AttributeError, cv2.error):
-    # Fallback to scikit-image (slower, pure Python)
-    from skimage.metrics import structural_similarity as _sk_ssim  # type: ignore
-    def _ssim(a: np.ndarray, b: np.ndarray) -> float:
-        return float(_sk_ssim(a, b, channel_axis=2))
+def chi2_histogram(img1, img2, bins=(8,8,8), eps=1e-10):
+    """Distance de Chi² entre histogrammes BGR 3D."""
+    hist1 = cv2.calcHist([img1], [0,1,2], None, bins, [0,256]*3).flatten()
+    hist2 = cv2.calcHist([img2], [0,1,2], None, bins, [0,256]*3).flatten()
+    hist1 /= (hist1.sum() + eps); hist2 /= (hist2.sum() + eps)
+    return 0.5 * np.sum((hist1 - hist2)**2 / (hist1 + hist2 + eps))
 
-# --- Alignment helpers ---
+def lbp_distance(img1, img2, P=8, R=1, bins=24):
+    """
+    Distance L2 entre histogrammes de LBP sur la luminance.
+    P = nombre de voisins, R = rayon.
+    """
+    # 1) Extraire luminance et normaliser
+    gray1 = cv2.cvtColor(img1, cv2.COLOR_BGR2GRAY)
+    gray2 = cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY)
 
-def _tile_to(shape: Tuple[int, int], img: np.ndarray) -> np.ndarray:
-    "Tiles `img` to match `shape`."
-    h, w = shape
-    th, tw, _ = img.shape
-    rep_y = h // th + 1
-    rep_x = w // tw + 1
-    tiled = np.tile(img, (rep_y, rep_x, 1))
-    return tiled[:h, :w]
+    # 2) Calculer LBP
+    lbp1 = local_binary_pattern(gray1, P, R, method='uniform')
+    lbp2 = local_binary_pattern(gray2, P, R, method='uniform')
 
-def _align(ref: np.ndarray, synth: np.ndarray, mode: str) -> Tuple[np.ndarray, np.ndarray]:
-    "Aligns `ref` and `synth` images based on `mode`."
-    if mode == "tile":
-        ref_aligned = _tile_to(synth.shape[:2], ref)
-        return ref_aligned, synth
-    if mode == "resize":
-        ref_aligned = cv2.resize(ref, synth.shape[:2][::-1], interpolation=cv2.INTER_CUBIC)
-        return ref_aligned, synth
-    if mode == "crop":
-        h = min(ref.shape[0], synth.shape[0])
-        w = min(ref.shape[1], synth.shape[1])
-        return ref[:h, :w], synth[:h, :w]
-    raise ValueError(f"Unknown alignment mode: {mode}")
+    # 3) Histogrammes normalisés
+    hist1, _ = np.histogram(lbp1.ravel(), bins=bins, range=(0, bins), density=True)
+    hist2, _ = np.histogram(lbp2.ravel(), bins=bins, range=(0, bins), density=True)
 
-# --- Main routine ---
-
-def sample_patches(ref: np.ndarray, synth: np.ndarray, k: int, n: int, rng: random.Random):
-    "Samples `n` random `k`x`k` patches from aligned `ref` and `synth` images."
-    h, w = ref.shape[:2]
-    if h < k or w < k:
-        raise ValueError("Patch size larger than aligned image.")
-    scores = []
-    mses   = []
-    for _ in range(n):
-        y = rng.randint(0, h - k)
-        x = rng.randint(0, w - k)
-        r_patch = ref[y:y+k, x:x+k]
-        s_patch = synth[y:y+k, x:x+k]
-        scores.append(_ssim(r_patch, s_patch))
-        mses.append(float(np.mean((r_patch.astype(np.float32) - s_patch.astype(np.float32)) ** 2)))
-    return np.array(scores), np.array(mses)
+    # 4) Distance L2
+    return float(np.linalg.norm(hist1 - hist2))
 
 def main():
-    p = argparse.ArgumentParser(description="Random-patch SSIM/MSE evaluation for texture quilting.")
-    p.add_argument("--ref",   type=Path, required=True, help="Reference exemplar texture image.")
-    p.add_argument("--synth", type=Path, required=True, help="Synthesized (quilted) image.")
-    p.add_argument("--patch", type=int, default=40, help="Patch size (KxK pixels) for comparison.")
-    p.add_argument("--num",   type=int, default=250, help="Number of random patches to sample.")
-    p.add_argument("--mode",  choices=["tile", "resize", "crop"], default="tile", help="Alignment mode for images of different sizes.")
-    p.add_argument("--seed",  type=int, default=0, help="RNG seed for reproducible patch sampling.")
-    args = p.parse_args()
+    parser = argparse.ArgumentParser(
+        description="Évaluation colorimétrique + texture (LBP) entre deux images")
+    parser.add_argument('--ref',   required=True, help="Image de référence")
+    parser.add_argument('--synth', required=True, help="Image synthétisée")
+    parser.add_argument('--bins',  nargs=3, type=int, default=[8,8,8],
+                        help="Buckets par canal BGR pour χ² histo")
+    parser.add_argument('--P',     type=int, default=8,
+                        help="Nombre de voisins pour LBP")
+    parser.add_argument('--R',     type=float, default=1.0,
+                        help="Rayon pour LBP")
+    parser.add_argument('--lbp_bins', type=int, default=24,
+                        help="Buckets pour histogramme LBP")
+    args = parser.parse_args()
 
-    ref_img = cv2.imread(str(args.ref), cv2.IMREAD_COLOR)
-    synth_img = cv2.imread(str(args.synth), cv2.IMREAD_COLOR)
-    if ref_img is None or synth_img is None:
-        raise SystemExit("Error: Could not load one or both images.")
+    # Chargement
+    ref   = cv2.imread(args.ref,   cv2.IMREAD_COLOR)
+    synth = cv2.imread(args.synth, cv2.IMREAD_COLOR)
+    if ref is None or synth is None:
+        parser.error("Impossible de lire l’une des images (--ref ou --synth invalide).")
 
-    aligned_ref, aligned_synth = _align(ref_img, synth_img, args.mode)
+    # Calcul des métriques
+    chi2 = chi2_histogram(ref, synth, bins=tuple(args.bins))
+    lbp  = lbp_distance(ref, synth, P=args.P, R=args.R, bins=args.lbp_bins)
 
-    rng = random.Random(args.seed)
-    ssim_scores, mses = sample_patches(aligned_ref, aligned_synth, args.patch, args.num, rng)
+    # Affichage
+    print(f"Chi² histogram distance (bins={args.bins}): {chi2:.4f}")
+    print(f"LBP histogram L2 distance (P={args.P}, R={args.R}, bins={args.lbp_bins}): {lbp:.4f}")
 
-    def _stats(arr: np.ndarray):
-        return {
-            "mean":   arr.mean(),
-            "median": np.median(arr),
-            "min":    arr.min(),
-            "max":    arr.max(),
-            "std":    arr.std(ddof=1), # Sample standard deviation
-        }
+    # Score combiné (optionnel)
+    combined = chi2 + lbp
+    print(f"Combined score (χ² + L2 LBP): {combined:.4f}")
 
-    print(f"\n=== Patchwise statistics (N = {args.num}) ===")
-    s_ssim = _stats(ssim_scores)
-    print(f"SSIM : mean {s_ssim['mean']:.3f}, median {s_ssim['median']:.3f}, min {s_ssim['min']:.3f}, max {s_ssim['max']:.3f}, std {s_ssim['std']:.3f}")
-    s_mse = _stats(mses)
-    print(f"MSE  : mean {s_mse['mean']:.1f}, median {s_mse['median']:.1f}, min {s_mse['min']:.1f}, max {s_mse['max']:.1f}, std {s_mse['std']:.1f}")
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
